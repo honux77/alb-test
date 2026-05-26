@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>ALB 테스트 앱</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <h1>ALB 테스트용 웹앱</h1>
+    <div id="login-area">
+        <input type="text" id="nickname" placeholder="닉네임 입력">
+        <button onclick="login()">로그인</button>
+    </div>
+    <div id="main-area" style="display:none;">
+        <p>인스턴스 ID: <span id="instance-id"></span></p>
+        <p>현재 접속자: <span id="users"></span></p>
+        <p>CPU 사용량: <span id="cpu"></span>%</p>
+        <button onclick="stress()">스트레스 주기</button>
+        <button onclick="stopStress()">원래대로</button>
+        <button onclick="logout()">로그아웃</button>
+    </div>
+    <script>
+        let token = null;
+        function login() {
+            const nickname = document.getElementById('nickname').value;
+            axios.post('/login', {nickname})
+                .then(res => {
+                    token = res.data.access_token;
+                    document.getElementById('login-area').style.display = 'none';
+                    document.getElementById('main-area').style.display = 'block';
+                    fetchAll();
+                    setInterval(fetchAll, 3000);
+                })
+                .catch(err => alert('로그인 실패'));
+        }
+        function logout() {
+            axios.post('/logout', {}, {headers: {Authorization: 'Bearer ' + token}})
+                .then(() => location.reload());
+        }
+        function fetchAll() {
+            axios.get('/instance-id').then(res => {
+                document.getElementById('instance-id').innerText = res.data.instance_id;
+            });
+            axios.get('/users').then(res => {
+                document.getElementById('users').innerText = res.data.users.join(', ');
+            });
+            axios.get('/cpu').then(res => {
+                document.getElementById('cpu').innerText = res.data.cpu;
+            });
+        }
+        function stress() {
+            axios.post('/stress').then(() => alert('부하 시작'));
+        }
+        function stopStress() {
+            axios.post('/stress/stop').then(() => alert('부하 중지'));
+        }
+    </script>
+</body>
+</html>
