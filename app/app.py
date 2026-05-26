@@ -3,8 +3,9 @@ from flask_jwt_extended import JWTManager, create_access_token, jwt_required, ge
 import os
 import socket
 import psutil
-import threading
+import multiprocessing
 import time
+import urllib.request
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'super-secret-key'
@@ -15,14 +16,31 @@ jwt = JWTManager(app)
 connected_users = set()
 # 부하 상태
 stress_active = False
-stress_thread = None
+stress_processes = []
 
-# 인스턴스 ID (EC2 환경이면 metadata에서 가져올 수 있음, 여기선 hostname 사용)
 def get_instance_id():
-    return socket.gethostname()
+    try:
+        # IMDSv2: 먼저 토큰 발급
+        token_req = urllib.request.Request(
+            'http://169.254.169.254/latest/api/token',
+            method='PUT',
+            headers={'X-aws-ec2-metadata-token-ttl-seconds': '21600'}
+        )
+        with urllib.request.urlopen(token_req, timeout=1) as r:
+            token = r.read().decode()
+        id_req = urllib.request.Request(
+            'http://169.254.169.254/latest/meta-data/instance-id',
+            headers={'X-aws-ec2-metadata-token': token}
+        )
+        with urllib.request.urlopen(id_req, timeout=1) as r:
+            return r.read().decode()
+    except Exception:
+        return socket.gethostname()
 
 def get_cpu_usage():
-    return psutil.cpu_percent(interval=1)
+    overall = psutil.cpu_percent(interval=0.3)
+    per_core = psutil.cpu_percent(percpu=True, interval=0.3)
+    return {'total': overall, 'per_core': per_core}
 
 @app.route('/')
 def index():
@@ -54,33 +72,38 @@ def users():
 
 @app.route('/cpu')
 def cpu():
-    return jsonify({'cpu': get_cpu_usage()})
+    return jsonify(get_cpu_usage())
 
-# 부하를 주는 함수
-def stress_cpu():
-    global stress_active
-    end_time = time.time() + 300  # 5분
-    while stress_active and time.time() < end_time:
-        # CPU를 70% 정도로 사용하도록 busy-wait
-        start = time.time()
-        while (time.time() - start) < 0.7:
+def _cpu_worker():
+    target = 0.70
+    interval = 0.05  # 50ms 단위로 제어 (정밀도 향상)
+    end_time = time.time() + 300
+    while time.time() < end_time:
+        deadline = time.perf_counter() + interval * target
+        while time.perf_counter() < deadline:
             pass
-        time.sleep(0.3)
-    stress_active = False
+        time.sleep(interval * (1 - target))
 
 @app.route('/stress', methods=['POST'])
 def stress():
-    global stress_active, stress_thread
+    global stress_active, stress_processes
     if not stress_active:
         stress_active = True
-        stress_thread = threading.Thread(target=stress_cpu)
-        stress_thread.start()
+        cpu_count = multiprocessing.cpu_count()
+        for _ in range(cpu_count):
+            p = multiprocessing.Process(target=_cpu_worker, daemon=True)
+            p.start()
+            stress_processes.append(p)
     return jsonify({'msg': 'CPU 부하 시작'})
 
 @app.route('/stress/stop', methods=['POST'])
 def stop_stress():
-    global stress_active
+    global stress_active, stress_processes
     stress_active = False
+    for p in stress_processes:
+        p.terminate()
+        p.join(timeout=1)
+    stress_processes = []
     return jsonify({'msg': 'CPU 부하 중지'})
 
 if __name__ == '__main__':

@@ -4,56 +4,297 @@
     <meta charset="UTF-8">
     <title>ALB 테스트 앱</title>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #f1f5f9;
+            color: #1e293b;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            padding: 36px 40px;
+            width: 100%;
+            max-width: 780px;
+        }
+
+        h1 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 28px;
+            letter-spacing: -0.3px;
+        }
+
+        /* 로그인 */
+        #login-area { display: flex; gap: 10px; }
+        #nickname {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        #nickname:focus { border-color: #6366f1; }
+
+        /* 버튼 */
+        button {
+            padding: 9px 18px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+        }
+        button:active { transform: scale(0.97); }
+        .btn-primary  { background: #6366f1; color: #fff; }
+        .btn-danger   { background: #ef4444; color: #fff; }
+        .btn-success  { background: #22c55e; color: #fff; }
+        .btn-ghost    { background: #e2e8f0; color: #475569; }
+        button:hover  { opacity: 0.88; }
+
+        /* 정보 그리드 */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .info-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+        .info-box .label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .info-box .value {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #0f172a;
+            word-break: break-all;
+        }
+        .info-box.cpu-total .value { font-size: 1.5rem; color: #6366f1; }
+
+        /* 코어 바 */
+        .core-bars { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+        .core-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+        .core-row .core-label { width: 52px; flex-shrink: 0; }
+        .core-row .bar-track {
+            flex: 1;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 99px;
+            overflow: hidden;
+        }
+        .core-row .bar-fill {
+            height: 100%;
+            border-radius: 99px;
+            background: linear-gradient(90deg, #818cf8, #6366f1);
+            transition: width 0.4s ease;
+        }
+        .core-row .pct { width: 38px; text-align: right; }
+
+        /* 차트 */
+        .chart-section {
+            margin: 20px 0;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 16px;
+        }
+        .chart-section h2 {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        /* 컨트롤 버튼 */
+        .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    </style>
 </head>
 <body>
+<div class="card">
     <h1>ALB 테스트용 웹앱</h1>
+
     <div id="login-area">
-        <input type="text" id="nickname" placeholder="닉네임 입력">
-        <button onclick="login()">로그인</button>
+        <input type="text" id="nickname" placeholder="닉네임 입력" onkeydown="if(event.key==='Enter')login()">
+        <button class="btn-primary" onclick="login()">로그인</button>
     </div>
+
     <div id="main-area" style="display:none;">
-        <p>인스턴스 ID: <span id="instance-id"></span></p>
-        <p>현재 접속자: <span id="users"></span></p>
-        <p>CPU 사용량: <span id="cpu"></span>%</p>
-        <button onclick="stress()">스트레스 주기</button>
-        <button onclick="stopStress()">원래대로</button>
-        <button onclick="logout()">로그아웃</button>
+        <div class="info-grid">
+            <div class="info-box">
+                <div class="label">인스턴스 ID</div>
+                <div class="value" id="instance-id">-</div>
+            </div>
+            <div class="info-box">
+                <div class="label">접속 중인 사용자</div>
+                <div class="value" id="users">-</div>
+            </div>
+            <div class="info-box cpu-total">
+                <div class="label">CPU 전체</div>
+                <div class="value"><span id="cpu">-</span>%</div>
+            </div>
+            <div class="info-box">
+                <div class="label">코어별 사용량</div>
+                <div class="core-bars" id="cpu-cores"></div>
+            </div>
+        </div>
+
+        <div class="chart-section">
+            <h2>CPU 사용률 추이</h2>
+            <canvas id="cpuChart" height="90"></canvas>
+        </div>
+
+        <div class="controls">
+            <button class="btn-danger"  onclick="stress()">스트레스 주기</button>
+            <button class="btn-success" onclick="stopStress()">원래대로</button>
+            <button class="btn-ghost"   onclick="logout()">로그아웃</button>
+        </div>
     </div>
-    <script>
-        let token = null;
-        function login() {
-            const nickname = document.getElementById('nickname').value;
-            axios.post('/login', {nickname})
-                .then(res => {
-                    token = res.data.access_token;
-                    document.getElementById('login-area').style.display = 'none';
-                    document.getElementById('main-area').style.display = 'block';
-                    fetchAll();
-                    setInterval(fetchAll, 3000);
-                })
-                .catch(err => alert('로그인 실패'));
-        }
-        function logout() {
-            axios.post('/logout', {}, {headers: {Authorization: 'Bearer ' + token}})
-                .then(() => location.reload());
-        }
-        function fetchAll() {
-            axios.get('/instance-id').then(res => {
-                document.getElementById('instance-id').innerText = res.data.instance_id;
+</div>
+
+<script>
+    const MAX_POINTS = 60;
+    let token = null;
+    let chart = null;
+
+    const CORE_COLORS = ['#6366f1','#f97316','#22c55e','#ef4444'];
+
+    function initChart(coreCount) {
+        const datasets = [{
+            label: 'Total',
+            data: [],
+            borderColor: '#0f172a',
+            backgroundColor: 'rgba(99,102,241,0.08)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 0,
+        }];
+        for (let i = 0; i < coreCount; i++) {
+            datasets.push({
+                label: `Core ${i}`,
+                data: [],
+                borderColor: CORE_COLORS[i % CORE_COLORS.length],
+                borderWidth: 1.5,
+                borderDash: [5, 4],
+                fill: false,
+                tension: 0.35,
+                pointRadius: 0,
             });
-            axios.get('/users').then(res => {
-                document.getElementById('users').innerText = res.data.users.join(', ');
-            });
-            axios.get('/cpu').then(res => {
-                document.getElementById('cpu').innerText = res.data.cpu;
-            });
         }
-        function stress() {
-            axios.post('/stress').then(() => alert('부하 시작'));
-        }
-        function stopStress() {
-            axios.post('/stress/stop').then(() => alert('부하 중지'));
-        }
-    </script>
+        chart = new Chart(document.getElementById('cpuChart'), {
+            type: 'line',
+            data: { labels: [], datasets },
+            options: {
+                animation: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: {
+                        ticks: { maxTicksLimit: 8, font: { size: 10 }, color: '#94a3b8' },
+                        grid: { color: '#f1f5f9' },
+                    },
+                    y: {
+                        min: 0, max: 100,
+                        ticks: { callback: v => v + '%', font: { size: 10 }, color: '#94a3b8' },
+                        grid: { color: '#f1f5f9' },
+                    }
+                },
+                plugins: {
+                    legend: { labels: { font: { size: 11 }, boxWidth: 14, padding: 12 } }
+                }
+            }
+        });
+    }
+
+    function pushCpuData(total, perCore) {
+        if (!chart) initChart(perCore.length);
+        const now = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+        const labels = chart.data.labels;
+        labels.push(now);
+        if (labels.length > MAX_POINTS) labels.shift();
+
+        chart.data.datasets[0].data.push(total);
+        if (chart.data.datasets[0].data.length > MAX_POINTS) chart.data.datasets[0].data.shift();
+
+        perCore.forEach((v, i) => {
+            chart.data.datasets[i + 1].data.push(v);
+            if (chart.data.datasets[i + 1].data.length > MAX_POINTS) chart.data.datasets[i + 1].data.shift();
+        });
+        chart.update();
+    }
+
+    function login() {
+        const nickname = document.getElementById('nickname').value.trim();
+        if (!nickname) return;
+        axios.post('/login', { nickname })
+            .then(res => {
+                token = res.data.access_token;
+                document.getElementById('login-area').style.display = 'none';
+                document.getElementById('main-area').style.display = 'block';
+                fetchAll();
+                setInterval(fetchAll, 3000);
+            })
+            .catch(() => alert('로그인 실패'));
+    }
+
+    function logout() {
+        axios.post('/logout', {}, { headers: { Authorization: 'Bearer ' + token } })
+            .then(() => location.reload());
+    }
+
+    function fetchAll() {
+        axios.get('/instance-id').then(res => {
+            document.getElementById('instance-id').innerText = res.data.instance_id;
+        });
+        axios.get('/users').then(res => {
+            document.getElementById('users').innerText = res.data.users.join(', ') || '-';
+        });
+        axios.get('/cpu').then(res => {
+            const { total, per_core } = res.data;
+            document.getElementById('cpu').innerText = total;
+            document.getElementById('cpu-cores').innerHTML = per_core.map((v, i) => `
+                <div class="core-row">
+                    <span class="core-label">Core ${i}</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:${v}%"></div></div>
+                    <span class="pct">${v}%</span>
+                </div>`).join('');
+            pushCpuData(total, per_core);
+        });
+    }
+
+    function stress()     { axios.post('/stress').then(() => alert('부하 시작')); }
+    function stopStress() { axios.post('/stress/stop').then(() => alert('부하 중지')); }
+</script>
 </body>
 </html>
