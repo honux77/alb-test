@@ -36,7 +36,7 @@ def get_instance_id():
         with urllib.request.urlopen(id_req, timeout=1) as r:
             return r.read().decode()
     except Exception:
-        return socket.gethostname()
+        return f"LOCAL-{socket.gethostname()}"
 
 def get_cpu_usage():
     overall = psutil.cpu_percent(interval=0.3)
