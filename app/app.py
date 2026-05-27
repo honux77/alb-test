@@ -6,6 +6,7 @@ import psutil
 import multiprocessing
 import time
 import urllib.request
+import random
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'super-secret-key'
@@ -51,9 +52,12 @@ def login():
     nickname = request.json.get('nickname', None)
     if not nickname:
         return jsonify({'msg': '닉네임 필요'}), 400
+    original = nickname
+    while nickname in connected_users:
+        nickname = f"{original}_{random.randint(0, 9)}{random.randint(0, 9)}{random.randint(0, 9)}"
     access_token = create_access_token(identity=nickname)
     connected_users.add(nickname)
-    return jsonify(access_token=access_token)
+    return jsonify(access_token=access_token, nickname=nickname)
 
 @app.route('/logout', methods=['POST'])
 @jwt_required()

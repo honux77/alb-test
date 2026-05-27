@@ -260,6 +260,10 @@
         axios.post('/login', { nickname })
             .then(res => {
                 token = res.data.access_token;
+                const assigned = res.data.nickname;
+                if (assigned !== nickname) {
+                    alert(`"${nickname}"은 이미 접속 중입니다.\n닉네임이 "${assigned}"으로 변경되었습니다.`);
+                }
                 document.getElementById('login-area').style.display = 'none';
                 document.getElementById('main-area').style.display = 'block';
                 fetchAll();
